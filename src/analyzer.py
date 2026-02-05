@@ -132,3 +132,63 @@ def nucleotide_counts(seq: str) -> dict:
         "Length": len(bases)
     }
 
+def segment_gc_profile(
+    seq: str,
+    window: int = 30,
+    step: int = 10,
+    threshold: float = 1.0,
+    min_segment_length: int = 2000
+):
+
+    """
+    Segment genome based on GC content change-point detection.
+
+    Returns:
+        segments: list of dicts with keys:
+            start, end, length, mean_gc
+        breakpoints: list of positions (0-based)
+        gc_profile: sliding window GC profile
+    """
+
+    # sliding window GC (position, gc%)
+    gc_profile = sliding_window_gc(seq, window, step)
+
+    if len(gc_profile) < 3:
+        return [], [], gc_profile
+
+    breakpoints = []
+
+    # --- change-point detection ---
+    for i in range(1, len(gc_profile) - 1):
+        _, prev_gc = gc_profile[i - 1]
+        pos, curr_gc = gc_profile[i]
+        _, next_gc = gc_profile[i + 1]
+
+        local_mean = (prev_gc + next_gc) / 2
+        if abs(curr_gc - local_mean) >= threshold:
+            breakpoints.append(pos)
+
+    # --- build segments ---
+    segments = []
+    positions = [0] + breakpoints + [len(seq)]
+
+    for i in range(len(positions) - 1):
+        start = positions[i]
+        end = positions[i + 1]
+
+        if end - start < min_segment_length:
+            continue
+
+        segment_seq = seq[start:end]
+        mean_gc = calculate_gc(segment_seq)
+
+        segments.append({
+            "start": start,
+            "end": end,
+            "length": end - start,
+            "mean_gc": mean_gc
+        })
+
+    return segments, breakpoints, gc_profile
+
+

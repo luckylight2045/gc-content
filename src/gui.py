@@ -10,10 +10,11 @@ from analyzer import (
     find_motif,
     gc_skew,
     find_orfs,
+    segment_gc_profile,
 )
 
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, simpledialog
 from analyzer import calculate_gc, sliding_window_gc
 from file_reader import read_fasta
 import matplotlib.pyplot as plt
@@ -117,7 +118,7 @@ def show_orfs():
             text_orfs.insert(tk.END, f"ORF {idx}: Start={orf['start']}, End={orf['end']}, Length={orf['length']}\n")
 
 
-def plot_gc_heatmap(seq: str, window: int = 50, step: int = 10):
+def plot_gc_heatmap(seq: str, window: int = 20, step: int = 5):
     data = sliding_window_gc(seq, window, step)
     if not data:
         messagebox.showwarning("Sequence too short", "Sequence shorter than window size.")
@@ -216,6 +217,72 @@ def plot_sliding_window():
     plt.title(f"Sliding Window GC% (window={window}, step={step})")
     plt.show()
 
+def plot_gc_segmentation():
+    seq = text_seq.get("1.0", tk.END).strip()
+    if not seq:
+        messagebox.showwarning("No sequence", "Paste a sequence or load a FASTA file.")
+        return
+    if not validate_sequence(seq):
+        messagebox.showerror("Invalid Sequence", "Sequence contains invalid characters!")
+        return
+
+    # parameters (you can tune later)
+    window = 50
+    step = 10
+    threshold = 1.0
+
+    segments, breakpoints, gc_profile = segment_gc_profile(
+        seq,
+        window=window,
+        step=step,
+        threshold=threshold
+    )
+
+    if not gc_profile:
+        messagebox.showwarning("Too short", "Sequence too short for segmentation.")
+        return
+
+    positions = [pos for pos, gc in gc_profile]
+    gcs = [gc for pos, gc in gc_profile]
+
+    plt.figure(figsize=(10, 4))
+    plt.plot(positions, gcs, label="GC%")
+
+    # draw breakpoints
+    for bp in breakpoints:
+        plt.axvline(bp, color="red", linestyle="--", alpha=0.6)
+
+    plt.xlabel("Position (bp)")
+    plt.ylabel("GC%")
+    plt.title("GC Segmentation (Change-Point Based)")
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+    # ---- show segments table ----
+    top = tk.Toplevel(root)
+    top.title("GC Segments")
+
+    text_seg = tk.Text(top, width=80, height=20)
+    text_seg.pack(padx=10, pady=10)
+
+    if not segments:
+        text_seg.insert(tk.END, "No significant segments detected.")
+        return
+
+    text_seg.insert(
+        tk.END,
+        "Start\tEnd\tLength\tMean GC%\n"
+        "-------------------------------------------\n"
+    )
+
+    for s in segments:
+        text_seg.insert(
+            tk.END,
+            f"{s['start']}\t{s['end']}\t{s['length']}\t{s['mean_gc']:.2f}\n"
+        )
+
+
 
 root = tk.Tk()
 root.title("GC Content Analyzer")
@@ -258,5 +325,13 @@ btn_motif.grid(row=8, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
 
 btn_export = tk.Button(frame, text="Export Report", command=export_report)
 btn_export.grid(row=9, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+
+btn_segment = tk.Button(
+    frame,
+    text="GC Segmentation",
+    command=plot_gc_segmentation
+)
+btn_segment.grid(row=10, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+
 
 root.mainloop()
